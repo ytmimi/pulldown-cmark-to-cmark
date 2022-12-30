@@ -2,7 +2,9 @@
 extern crate indoc;
 
 use pulldown_cmark::{Alignment, CodeBlockKind, Event, LinkType, Options, Parser, Tag};
-use pulldown_cmark_to_cmark::{cmark, cmark_resume, cmark_resume_with_options, Options as CmarkToCmarkOptions, State};
+use pulldown_cmark_to_cmark::{
+    cmark, cmark_resume, cmark_resume_with_options, cmark_with_options, Options as CmarkToCmarkOptions, State,
+};
 
 fn fmts(s: &str) -> (String, State<'static>) {
     let mut buf = String::new();
@@ -28,18 +30,24 @@ fn fmte<'a>(e: impl AsRef<[Event<'a>]>) -> (String, State<'static>) {
     (buf, s)
 }
 
-/// Asserts that if we parse our `str` s into a series of events, then serialize them with `cmark`
-/// that we'll get the same series of events when we parse them again.
-fn assert_events_eq(s: &str) {
+/// Asserts that if we parse our `str` s into a series of events, then serialize them with
+/// `cmark_with_options` that we'll get the same series of events when we parse them again.
+fn assert_events_eq_with_options(s: &str, options: CmarkToCmarkOptions) {
     let before_events = Parser::new_ext(s, Options::all());
 
     let mut buf = String::new();
-    cmark(before_events, &mut buf).unwrap();
+    cmark_with_options(before_events, &mut buf, options).unwrap();
 
     let before_events = Parser::new_ext(s, Options::all());
     let after_events = Parser::new_ext(&buf, Options::all());
     println!("{}", buf);
     assert_eq!(before_events.collect::<Vec<_>>(), after_events.collect::<Vec<_>>());
+}
+
+/// Asserts that if we parse our `str` s into a series of events, then serialize them with `cmark`
+/// that we'll get the same series of events when we parse them again.
+fn assert_events_eq(s: &str) {
+    assert_events_eq_with_options(s, CmarkToCmarkOptions::default())
 }
 
 mod lazy_newlines {
@@ -317,7 +325,10 @@ mod inline_elements {
 }
 
 mod blockquote {
-    use super::{assert_events_eq, fmte, fmtes, fmts, Event, State, Tag};
+    use super::{
+        assert_events_eq, assert_events_eq_with_options, fmte, fmtes, fmts, fmts_with_options, CmarkToCmarkOptions,
+        Event, State, Tag,
+    };
 
     #[test]
     fn it_pops_padding_on_quote_end() {
@@ -447,6 +458,19 @@ mod blockquote {
     }
 
     #[test]
+    fn simple_with_custom_blockquote() {
+        let s = "> a\n> b\n> c";
+        let (output, _) = fmts_with_options(
+            s,
+            CmarkToCmarkOptions {
+                blockquote: "> ",
+                ..Default::default()
+            },
+        );
+        assert_eq!(s, output);
+    }
+
+    #[test]
     fn empty() {
         let s = " > ";
 
@@ -529,6 +553,34 @@ mod blockquote {
             fmts(s),
             (
                 "*  > * foo\n   >   * baz\n   \n   *  > bar".into(),
+                State {
+                    newlines_before_start: 2,
+                    ..Default::default()
+                }
+            )
+        )
+    }
+
+    #[test]
+    fn with_lists_and_custom_blockquote() {
+        let options = CmarkToCmarkOptions {
+            blockquote: "> ",
+            ..Default::default()
+        };
+        let s = indoc!(
+            "
+            * > * foo
+              >   * baz
+              
+              * > bar"
+        );
+
+        assert_events_eq_with_options(s, options.clone());
+
+        assert_eq!(
+            fmts_with_options(s, options),
+            (
+                s.into(),
                 State {
                     newlines_before_start: 2,
                     ..Default::default()

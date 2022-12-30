@@ -84,6 +84,7 @@ pub struct Options<'a> {
     pub increment_ordered_list_bullets: bool,
     pub emphasis_token: char,
     pub strong_token: &'a str,
+    pub blockquote: &'static str,
 }
 
 const DEFAULT_OPTIONS: Options<'_> = Options {
@@ -102,6 +103,7 @@ const DEFAULT_OPTIONS: Options<'_> = Options {
     increment_ordered_list_bullets: false,
     emphasis_token: '*',
     strong_token: "**",
+    blockquote: " > ",
 };
 
 impl<'a> Default for Options<'a> {
@@ -368,7 +370,7 @@ where
             }
             Start(ref tag) => {
                 let nested = state.padding.len() >= 1;
-                let last_was_list = !state.padding.last_padding_was(" > ");
+                let last_was_list = !state.padding.last_padding_was(options.blockquote);
                 if let List(ref list_type) = *tag {
                     state.list_stack.push(*list_type);
                     if (last_was_list || !nested)
@@ -430,10 +432,10 @@ where
                         formatter.write_char(' ')
                     }
                     BlockQuote => {
-                        state.padding.push(" > ".into());
+                        state.padding.push(options.blockquote.into());
                         state.newlines_before_start = 0;
 
-                        formatter.write_str(" > ".into())
+                        formatter.write_str(options.blockquote.into())
                     }
                     CodeBlock(CodeBlockKind::Indented) => {
                         state.is_in_code_block = true;
