@@ -152,7 +152,7 @@ mod padding {
                 &[Event::Start(Tag::Paragraph), Event::Text("h".into())],
                 State {
                     newlines_before_start: 2,
-                    padding: vec!["  ".into()],
+                    padding: vec!["  "].into(),
                     last_was_text_without_trailing_newline: true,
                     ..Default::default()
                 }
@@ -161,7 +161,7 @@ mod padding {
                 "\n  \n  h".into(),
                 State {
                     newlines_before_start: 0,
-                    padding: vec!["  ".into()],
+                    padding: vec!["  "].into(),
                     last_was_text_without_trailing_newline: true,
                     ..Default::default()
                 }
@@ -325,14 +325,14 @@ mod blockquote {
             fmtes(
                 &[Event::End(Tag::BlockQuote),],
                 State {
-                    padding: vec![" > ".into()],
+                    padding: vec![" > "].into(),
                     ..Default::default()
                 }
             )
             .1,
             State {
                 newlines_before_start: 2,
-                padding: vec![],
+                padding: vec![].into(),
                 ..Default::default()
             }
         )
@@ -343,8 +343,8 @@ mod blockquote {
         assert_eq!(
             fmte(&[Event::Start(Tag::BlockQuote),]).1,
             State {
-                newlines_before_start: 1,
-                padding: vec![" > ".into()],
+                newlines_before_start: 0,
+                padding: vec![" > "].into(),
                 ..Default::default()
             }
         )
@@ -361,11 +361,11 @@ mod blockquote {
 
         assert_events_eq(s);
 
-        assert_eq!(fmts(s).0, "\n > \n > <table>\n > </table>\n > ")
+        assert_eq!(fmts(s).0, " > <table>\n > </table>\n > ")
     }
     #[test]
     fn with_inlinehtml() {
-        assert_eq!(fmts(" > <br>").0, "\n > \n > <br>")
+        assert_eq!(fmts(" > <br>").0, " > <br>")
     }
     #[test]
     fn with_plaintext_in_html() {
@@ -388,7 +388,7 @@ mod blockquote {
 
         assert_events_eq(s);
 
-        assert_eq!(fmts(s).0, "\n > \n > ````a\n > t1\n > t2\n > ````",)
+        assert_eq!(fmts(s).0, " > \n > ````a\n > t1\n > t2\n > ````",)
     }
     #[test]
     fn nested() {
@@ -404,7 +404,7 @@ mod blockquote {
 
         assert_events_eq(s);
 
-        assert_eq!(fmts(s).0, "\n > \n > a\n > \n >  > \n >  > b\n > \n > c",)
+        assert_eq!(fmts(s).0, " > a\n > \n >  > b\n > \n > c",)
     }
 
     #[test]
@@ -419,7 +419,7 @@ mod blockquote {
 
         assert_events_eq(s);
 
-        assert_eq!(fmts(s).0, "\n > \n >  > \n >  > foo\n >  > bar\n >  > baz",)
+        assert_eq!(fmts(s).0, " >  > foo\n >  > bar\n >  > baz",)
     }
 
     #[test]
@@ -437,7 +437,7 @@ mod blockquote {
         assert_eq!(
             fmts(s),
             (
-                "\n > \n > a\n > b  \n > c".into(),
+                " > a\n > b  \n > c".into(),
                 State {
                     newlines_before_start: 2,
                     ..Default::default()
@@ -455,7 +455,7 @@ mod blockquote {
         assert_eq!(
             fmts(s),
             (
-                "\n > ".into(),
+                " > ".into(),
                 State {
                     newlines_before_start: 2,
                     ..Default::default()
@@ -479,7 +479,7 @@ mod blockquote {
         assert_eq!(
             fmts(s),
             (
-                "\n > \n > foo\n\n > \n > bar".into(),
+                " > foo\n\n > bar".into(),
                 State {
                     newlines_before_start: 2,
                     ..Default::default()
@@ -504,7 +504,7 @@ mod blockquote {
         assert_eq!(
             fmts(s),
             (
-                "\n > \n > foo\n > baz\n\n > \n > bar".into(),
+                " > foo\n > baz\n\n > bar".into(),
                 State {
                     newlines_before_start: 2,
                     ..Default::default()
@@ -528,7 +528,7 @@ mod blockquote {
         assert_eq!(
             fmts(s),
             (
-                "* \n   > \n   > * foo\n   >   * baz\n  \n  * \n     > \n     > bar".into(),
+                "*  > * foo\n   >   * baz\n   \n   *  > bar".into(),
                 State {
                     newlines_before_start: 2,
                     ..Default::default()

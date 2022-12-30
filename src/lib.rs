@@ -41,7 +41,7 @@ pub struct State<'a> {
     pub list_stack: Vec<Option<u64>>,
     /// The computed padding and prefix to print after each newline.
     /// This changes with the level of `BlockQuote` and `List` events.
-    pub padding: Vec<Cow<'a, str>>,
+    pub padding: Padding<'a>,
     /// Keeps the current table alignments, if we are currently serializing a table.
     pub table_alignments: Vec<Alignment>,
     /// Keeps the current table headers, if we are currently serializing a table.
@@ -127,6 +127,88 @@ impl<'a> Options<'a> {
             s.push(self.emphasis_token);
             s.push_str(self.strong_token);
             s.into()
+        }
+    }
+}
+
+#[derive(Clone, Default, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Padding<'a> {
+    /// Stack of padding
+    padding_stack: Vec<Cow<'a, str>>,
+    /// Stack of indexes on the padding stack where extra alignment was added
+    nested_alignment: Vec<usize>,
+}
+
+impl<'a> Padding<'a> {
+    fn push(&mut self, padding: Cow<'a, str>) {
+        self.padding_stack.push(padding)
+    }
+
+    fn pop(&mut self) -> Option<Cow<'a, str>> {
+        let is_last_alignment = self.is_last_alignment_padding();
+        let mut last_padding = self.padding_stack.pop()?;
+
+        // Remove any extra indentation we added to the padding stack to keep nested items with different
+        // amounts of leading whitespace aligned. For examle, unordered lists add 2 spaces of indentation
+        // by default ("  "), while blockquotes add 3 spaces of indentation by default (" > ").
+        if is_last_alignment {
+            last_padding = self.padding_stack.pop()?;
+            self.nested_alignment.pop();
+        };
+
+        // Look for leading whitespace in the padding we just popped to see if we need to add any alignment padding.
+        // For example, by default blockquotes add 1 leading whitespace character (" > "). Once we're at the end of
+        // a blockquote and remove it from the padding stack we want to ensure that other nested items get aligned
+        // to the same level as the block quote. For example,
+        // ```
+        // *  > block quote
+        //    > more block quote
+        //    * nested list at the same indentation as the block quote
+        // ```
+        let padding_from_last = self.padding_stack.last().map_or(0, |p| p.len());
+        let padding_from_popped = last_padding.len();
+        let leading_whitespace_chars = last_padding.find(|c: char| !c.is_whitespace()).unwrap_or(0);
+        let needs_alignment =
+            leading_whitespace_chars > 0 && padding_from_last < padding_from_popped && self.padding_stack.len() > 0;
+        if needs_alignment {
+            self.padding_stack.push(" ".repeat(leading_whitespace_chars).into());
+            self.nested_alignment.push(self.padding_stack.len() - 1);
+        }
+        Some(last_padding)
+    }
+
+    /// helper method to determine if the last padding on the stack was used for alignment
+    fn is_last_alignment_padding(&self) -> bool {
+        let stack_size = self.padding_stack.len();
+        if stack_size == 0 {
+            return false;
+        }
+        match self.nested_alignment.last() {
+            Some(alignment_idx) => *alignment_idx == stack_size - 1,
+            _ => false,
+        }
+    }
+
+    /// helper method to determine if the last padding added to the stack matches the given padding
+    fn last_padding_was(&self, padding: &str) -> bool {
+        self.padding_stack.last().map_or(false, |p| p == padding)
+    }
+}
+
+impl<'a> std::ops::Deref for Padding<'a> {
+    type Target = Vec<Cow<'a, str>>;
+    fn deref(&self) -> &Self::Target {
+        &self.padding_stack
+    }
+}
+
+// mostly implemented to make creating `Padding` for testing easier
+impl<'a> From<Vec<&'a str>> for Padding<'a> {
+    fn from(padding_stack: Vec<&'a str>) -> Self {
+        let padding_stack = padding_stack.into_iter().map(|p| p.into()).collect();
+        Padding {
+            padding_stack,
+            nested_alignment: vec![],
         }
     }
 }
@@ -285,9 +367,14 @@ where
                     .and_then(|_| formatter.write_str(&end))
             }
             Start(ref tag) => {
+                let nested = state.padding.len() >= 1;
+                let last_was_list = !state.padding.last_padding_was(" > ");
                 if let List(ref list_type) = *tag {
                     state.list_stack.push(*list_type);
-                    if state.list_stack.len() > 1 && state.newlines_before_start < options.newlines_after_rest {
+                    if (last_was_list || !nested)
+                        && state.list_stack.len() > 1
+                        && state.newlines_before_start < options.newlines_after_rest
+                    {
                         state.newlines_before_start = options.newlines_after_rest;
                     }
                 }
@@ -344,16 +431,9 @@ where
                     }
                     BlockQuote => {
                         state.padding.push(" > ".into());
-                        state.newlines_before_start = 1;
+                        state.newlines_before_start = 0;
 
-                        // if we consumed some newlines, we know that we can just write out the next
-                        // level in our blockquote. This should work regardless if we have other
-                        // padding or if we're in a list
-                        if consumed_newlines {
-                            formatter.write_str(" > ")
-                        } else {
-                            formatter.write_char('\n').and(padding(&mut formatter, &state.padding))
-                        }
+                        formatter.write_str(" > ".into())
                     }
                     CodeBlock(CodeBlockKind::Indented) => {
                         state.is_in_code_block = true;
